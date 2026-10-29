@@ -4,8 +4,7 @@ applyTo: '**'
 
 # SDD Weather App — Instruções do Projeto
 
-Este repositório é um treinamento de **Spec-Driven Development (SDD) com GitHub
-Copilot**. O objetivo é construir um **Weather App** seguindo o fluxo:
+Este repositório é um treinamento de **Spec-Driven Development (SDD) com GitHub Copilot**. O objetivo é construir um **Weather App** seguindo o fluxo:
 
 `Brief → Spec → Plan → Tasks → Code → Test → Review → Ship`
 

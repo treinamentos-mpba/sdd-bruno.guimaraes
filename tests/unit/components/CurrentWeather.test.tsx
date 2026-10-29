@@ -1,7 +1,11 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import CurrentWeather from '../../../src/components/CurrentWeather';
+import UnitToggle from '../../../src/components/UnitToggle';
 import { mockWeatherData } from '../../../src/mocks/weather';
+import type { Unit } from '../../../src/types/weather';
 
 afterEach(cleanup);
 
@@ -12,6 +16,30 @@ function metricValue(label: string) {
 }
 
 describe('CurrentWeather', () => {
+  it('exibe 32 °F ao selecionar Fahrenheit no UnitToggle com temperatura de 0 °C', async () => {
+    const user = userEvent.setup();
+
+    function WeatherWithUnitToggle() {
+      const [unit, setUnit] = useState<Unit>('celsius');
+
+      return (
+        <>
+          <UnitToggle unit={unit} onChange={setUnit} />
+          <CurrentWeather city={city} current={{ ...current, temperatureC: 0 }} unit={unit} />
+        </>
+      );
+    }
+
+    render(<WeatherWithUnitToggle />);
+    const weather = within(screen.getByRole('region', { name: 'Salvador, Bahia, Brasil' }));
+    expect(weather.getByText('0 °C', { exact: true })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: '°F' }));
+
+    expect(weather.getByText('32 °F', { exact: true })).toBeVisible();
+    expect(weather.queryByText('0 °C', { exact: true })).not.toBeInTheDocument();
+  });
+
   it('exibe cidade, condição, horário e todas as métricas com unidades', () => {
     render(
       <CurrentWeather

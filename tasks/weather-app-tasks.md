@@ -491,6 +491,7 @@ conclui as consultas independentes, a previsão com menos datas nem cancelamento
 ### T-30 — Testar a alternância de unidade
 
 - **Descrição:** Validar o controle e a aplicação consistente da unidade aos dados meteorológicos.
+- **Cobertura adicionada:** `tests/unit/components/CurrentWeather.test.tsx` renderiza `UnitToggle` e `CurrentWeather` com estado compartilhado e verifica que clicar em °F transforma a exibição de 0 °C em 32 °F (AC5.2), sem rede.
 - **Critérios de aceite:**
   - Testes verificam °C inicial, °F em todos os campos disponíveis, símbolos e precisão de apresentação.
   - Após alternar e voltar, cidade, datas e valores de origem permanecem iguais; nenhuma chamada adicional ocorre.
@@ -540,6 +541,7 @@ conclui as consultas independentes, a previsão com menos datas nem cancelamento
 
 ### T-33 — Validar fluxos funcionais ponta a ponta
 - **Descrição:** Criar cenários Playwright para os fluxos funcionais, interceptando as APIs para evitar dependência da rede pública.
+- **Cobertura adicionada:** `tests/e2e/weather.spec.ts` intercepta geocoding e forecast, busca Salvador, verifica cidade e região com cinco dias e converte 0 °C em 32 °F pelo controle acessível; executa nos projetos desktop e mobile do Playwright.
 - **Critérios de aceite:**
 - Teste Playwright percorre busca, desambiguação, seleção, clima, cinco dias e alternância em Chromium, usando fixtures interceptadas e zero chamadas à rede pública.
 - O fluxo principal é executado em viewport mobile de 360 × 800 CSS px com contexto de toque; busca, seleção, visualização e alternância são concluídas nesse viewport.

@@ -24,7 +24,7 @@ describe('SearchBar', () => {
     const onSearch = vi.fn();
     render(<SearchBar onSearch={onSearch} />);
 
-    await user.type(screen.getByRole('searchbox'), '  São Paulo  ');
+    await user.type(screen.getByLabelText('Cidade'), '  São Paulo  ');
     expect(onSearch).not.toHaveBeenCalled();
 
     if (action === 'button') {
@@ -40,13 +40,14 @@ describe('SearchBar', () => {
     '',
     '   ',
     '\t\n\u00a0',
-  ])('rejeita entrada vazia %j com orientação acessível', (value) => {
+  ])('rejeita entrada vazia %j com orientação acessível', async (value) => {
+    const user = userEvent.setup();
     const onSearch = vi.fn();
     render(<SearchBar onSearch={onSearch} />);
     const input = screen.getByRole('searchbox');
     fireEvent.change(input, { target: { value } });
 
-    fireEvent.submit(screen.getByRole('search'));
+    await user.click(screen.getByRole('button', { name: 'Buscar' }));
 
     expect(onSearch).not.toHaveBeenCalled();
     expect(input).toHaveFocus();

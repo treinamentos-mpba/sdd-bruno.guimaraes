@@ -110,6 +110,7 @@ A tabela indica as tarefas de implementação e, quando houver cobertura dedicad
   - Campos complementares ausentes são representáveis como `null`; os campos essenciais têm tipos não opcionais.
   - Os valores de temperatura no domínio são armazenados em Celsius e sem arredondamento.
   - Os tipos de resposta bruta da API não são expostos à interface.
+  - `WeatherData` agrega cidade, clima atual e previsão; `src/mocks/weather.ts` exporta um exemplo tipado com cinco dias locais consecutivos, para desenvolvimento da UI sem API e sem ativação automática na aplicação.
   - `pnpm exec tsc --noEmit` conclui sem erros de tipo nos contratos.
 - **Dependências:** T-01, T-45.
 - **Arquivos prováveis:** `src/types/weather.ts`.
@@ -200,6 +201,14 @@ A tabela indica as tarefas de implementação e, quando houver cobertura dedicad
 
 ### T-09 — Implementar transporte HTTP resiliente
 
+**Incremento P7.3 solicitado:** adicionar `fetchWithTimeout` ao serviço existente,
+compartilhado por busca e forecast, com `AbortController` de 10 s e
+`clearTimeout` no `finally`. Normalizar `AbortError` e falhas de rede com as
+mensagens exatas “A requisição demorou demais.” e “Falha de rede.”.
+Testar o limiar 9.999/10.000 ms, limpeza em sucesso/falha/aborto e integração
+com ambas as consultas. Cancelamento externo e timeout durante leitura do
+corpo permanecem fora deste incremento; não marcar T-09/T-10 completas.
+
 - **Descrição:** Criar o suporte compartilhado a chamadas HTTPS com timeout, cancelamento e classificação de falhas.
 - **Critérios de aceite:**
   - Cada chamada termina em sucesso, erro ou timeout após no máximo 10 segundos; o chamador pode abortá-la via `AbortSignal`.
@@ -223,6 +232,14 @@ A tabela indica as tarefas de implementação e, quando houver cobertura dedicad
 - **Rastreabilidade:** AC7.2, AC7.7; RNF4.
 
 ### T-11 — Implementar o serviço de geocodificação
+
+**Incremento P7.1 solicitado:** implementar primeiro `searchCities(name)` em
+`src/services/weatherService.ts` com `WeatherServiceError`, trim/NFC, nome
+codificado, vazio sem rede, mapeamento validado para `City[]` e distinção entre
+vazio e erro. Cobrir com `fetch` simulado em
+`tests/unit/services/weatherService.test.ts`. Timeout, cancelamento e transporte
+compartilhado não fazem parte deste incremento; T-11/T-12 completas continuam
+dependendo desses itens.
 
 - **Descrição:** Construir a URL e consultar o endpoint de busca usando o termo validado e o transporte compartilhado.
 - **Critérios de aceite:**
@@ -249,6 +266,8 @@ A tabela indica as tarefas de implementação e, quando houver cobertura dedicad
 ### T-13 — Criar os componentes de formulário e resultados da busca
 
 - **Descrição:** Implementar a entrada acessível de cidade e a lista de resultados com dados para desambiguar locais.
+- **Recorte implementado:** `src/components/SearchBar.tsx` oferece label e região de busca acessíveis, submissão explícita com `trim`, orientação para entrada vazia e bloqueio por `disabled`, com testes em `tests/unit/components/SearchBar.test.tsx`. Resultados, estados remotos e demais regras de validação continuam pendentes nesta entrega.
+- **Estados de apresentação implementados:** `src/components/states/LoadingState.tsx` anuncia carregamento com `role="status"` e `message` opcional; `ErrorState.tsx` anuncia `message` e emite `onRetry` pelo botão “Tentar novamente”; `EmptyState.tsx` oferece `title` e `hint` opcionais, com orientação padrão para busca sem resultados. Testes em `tests/unit/components/states/` cobrem mensagens e retry por clique e teclado. A integração aos estados remotos continua pendente.
 - **Critérios de aceite:**
   - Submeter pelo botão ou Enter emite uma única ação de busca; mensagem de validação fica associada ao input por atributo acessível.
   - Cada resultado exibe nome e país, inclui região quando disponível, e pode ser selecionado por teclado e toque.
@@ -262,6 +281,7 @@ A tabela indica as tarefas de implementação e, quando houver cobertura dedicad
 ### T-14 — Orquestrar busca, estados e concorrência
 
 - **Descrição:** Integrar validação, serviço e estado de busca, descartando resultados obsoletos.
+- **Recorte implementado:** `src/hooks/useWeather.ts` expõe `status`, `data` (`WeatherData | null`), `cities`, `error` (mensagem em pt-BR ou `null`), `query` normalizada e ações assíncronas `search(name)`, `selectCity(city)` e `retry()`. A busca carrega automaticamente o clima da primeira cidade pelo serviço agregado existente; seleção preserva os resultados e consulta diretamente a identidade recebida. `retry()` repete a última ação pública completa (busca, incluindo geocoding, ou seleção); antes da primeira ação, não faz consultas. Novas ações limpam dados e erro, e respostas obsoletas ou posteriores à desmontagem são descartadas. Testes em `tests/unit/hooks/useWeather.test.ts`. O App integra busca, estados e retry nos recortes de T-31/T-38; seleção na tela e consultas independentes por seção de T-25 permanecem pendentes.
 - **Critérios de aceite:**
   - A busca transita por `idle`, `loading`, `success`, `empty` e `error`; somente sucesso com zero resultados produz `empty`.
   - Termo inválido não chama serviço; ação explícita de retry repete o termo da busca que falhou.
@@ -350,6 +370,13 @@ A tabela indica as tarefas de implementação e, quando houver cobertura dedicad
 
 ### T-21 — Implementar os serviços de clima atual e previsão
 
+**Incremento P7.2 solicitado:** adicionar `getWeather(city): Promise<WeatherData>`
+ao serviço existente, com current e daily em uma consulta, mapeamento de arrays
+paralelos para cinco dias e erro tipado quando faltar current/daily ou cinco
+datas utilizáveis. Validar URL, unidades, precisão, campos complementares e
+respostas incompletas nos testes do serviço. Este incremento agregado não
+conclui as consultas independentes, a previsão com menos datas nem cancelamento.
+
 - **Descrição:** Consultar o endpoint forecast com as coordenadas selecionadas e normalizar as respostas de cada seção.
 - **Critérios de aceite:**
   - URL usa HTTPS, latitude/longitude da cidade selecionada, Celsius, km/h, `timezone=auto` e `forecast_days=5`.
@@ -377,6 +404,9 @@ A tabela indica as tarefas de implementação e, quando houver cobertura dedicad
 - **Descrição:** Exibir condições atuais e cartões dos dias da previsão, com identidade da cidade e estados parciais.
 - **Critérios de aceite:**
   - Clima atual mostra identidade completa da cidade, temperatura e condição, horário e rótulos de sensação, umidade e vento com valores ou “—”.
+  - Hero responsivo recebe `city`, `current`, `unit`, usa `lib/temperature` e
+    `lib/weatherCodes` e inclui precipitação em mm e pressão em hPa.
+    Campos novos são opcionais no contrato; valores ausentes aparecem como “—”.
   - Cada cartão da previsão mostra data local, dia da semana, mínima, máxima e condição; campos ausentes aparecem como “—”.
   - Dia/previsão incompletos têm indicação textual e código WMO desconhecido mostra “Condição indisponível” sem erro de renderização.
 - **Dependências:** T-02, T-19, T-25, T-27.
@@ -473,6 +503,7 @@ A tabela indica as tarefas de implementação e, quando houver cobertura dedicad
 ## Entrega 5 — Integração, acessibilidade e hardening
 
 ### T-31 — Integrar os fluxos completos e estados da tela
+- **Recorte desta integração:** Substituir o mock do App por `useWeather`, conectando `search`, os cinco estados e dados de sucesso. Manter apenas `unit` como estado de UI. Cobrir com serviços simulados; seleção e estados independentes das seções permanecem pendentes.
 - **Descrição:** Compor na aplicação o formulário, resultados, seleção, clima atual, previsão e estados independentes das seções.
 - **Critérios de aceite:**
 - Teste de integração renderiza a tela e percorre busca, seleção, clima atual e previsão usando serviços simulados.
@@ -484,6 +515,7 @@ A tabela indica as tarefas de implementação e, quando houver cobertura dedicad
 - **Rastreabilidade:** RF1–RF3, RF6; AC1.1–AC1.6, AC2.2, AC3.1–AC3.4, AC4.1, AC7.1, AC8.1–AC8.2; RNF2, RNF4.
 
 ### T-38 — Integrar alternância de unidade e retry na tela
+- **Recorte desta integração:** Passar `unit` a CurrentWeather e ForecastList sem refetch e conectar ErrorState ao `retry` do hook com sua mensagem de erro. Verificar preservação da unidade entre consultas e retry. Retry independente por seção permanece pendente.
 - **Descrição:** Conectar o controle de unidade e as ações de retry aos estados e dados apresentados pela aplicação.
 - **Critérios de aceite:**
 - No fluxo integrado, alternar °C/°F atualiza todas as temperaturas disponíveis sem aumentar a contagem de chamadas de serviço.
@@ -594,6 +626,21 @@ A tabela indica as tarefas de implementação e, quando houver cobertura dedicad
 - **Arquivos prováveis:** `src/components/Attribution.tsx`, `src/App.tsx`.
 - **Tipo:** UI
 - **Rastreabilidade:** RNF8; Production Release Gates.
+
+### T-48 — Compor a prévia visual completa com WeatherData
+
+- **Descrição:** Montar uma etapa intermediária de UI com os componentes existentes, sem implementar serviços ou simular dados reais.
+- **Critérios de aceite:**
+  - Cabeçalho com marca, SearchBar e UnitToggle; tema dark glassmorphism e layout responsivo.
+  - Montagem em `idle`, sem dados meteorológicos nem chamadas de rede.
+  - Seletor explícito de demonstração permite visualizar `idle/loading/empty/error/success`.
+  - Buscar Salvador exibe o mock; outros nomes exibem vazio; retry do erro simulado exibe sucesso.
+  - Unidade de UI inicia em Celsius, persiste entre estados e converte todas as temperaturas somente ao renderizar, sem mutar o mock.
+  - Testes cobrem os estados, busca, retry, conversão e larguras 320, 360, 414, 768, 1024 e 1440 px.
+- **Dependências:** T-02, T-13, T-23, T-27, T-29.
+- **Arquivos prováveis:** `src/App.tsx`, `src/main.tsx`, `src/index.css`, `tests/unit/App.test.tsx`, `tests/e2e/layout.spec.ts`.
+- **Tipo:** UI
+- **Rastreabilidade:** Prévia visual com mock (fase UI); não conclui T-31/T-38 de integração real.
 
 ### T-35 — Executar e registrar a validação final
 - **Descrição:** Rodar os comandos de qualidade e testes após integração e registrar resultados e pendências dos gates.

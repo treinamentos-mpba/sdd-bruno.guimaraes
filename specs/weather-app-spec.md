@@ -8,6 +8,27 @@
 
 O Weather App é uma aplicação de previsão do tempo que permite ao usuário pesquisar uma cidade pelo nome, visualizar as condições meteorológicas atuais e a previsão para cinco dias (hoje + 4 dias seguintes), com alternância entre Celsius e Fahrenheit. A experiência deve funcionar plenamente em dispositivos móveis.
 
+### Prévia visual com mock (fase UI)
+
+Antes da integração com a API, a tela oferece uma demonstração explicitamente
+identificada, sem rede e sem dados meteorológicos na montagem inicial. O cabeçalho
+reúne marca, busca e unidade. Um seletor de prévia permite inspecionar `idle`,
+`loading`, `empty`, `error` e `success`; sucesso apresenta o mock de Salvador.
+Nesta prévia, buscar Salvador (sem diferenciar maiúsculas) exibe o mock; outros
+nomes exibem vazio. Retry do erro simulado apresenta sucesso. A unidade inicia
+em Celsius, permanece ao trocar de estado e só afeta a renderização. Essa prévia
+não substitui os fluxos reais e independentes das seções previstos nesta spec.
+
+### Integração inicial com a API
+
+A tela substitui a demonstração pelo hook `useWeather`: busca explícita consulta
+o clima da primeira cidade retornada e renderiza `idle`, `loading`, `empty`,
+`error` ou `success`. Não há consulta na montagem nem seletor de prévia.
+O erro apresenta a mensagem da consulta e permite repetir a última operação.
+A unidade permanece como estado de UI em Celsius inicialmente, é preservada
+entre consultas e só altera a apresentação, sem novas requisições.
+Seleção de cidades e estados independentes das seções permanecem etapas posteriores.
+
 ### Objetivos do produto
 
 - Permitir que qualquer pessoa consulte rapidamente o clima de uma cidade e planeje os próximos dias.
@@ -43,6 +64,8 @@ Usuários em geral, prioritariamente em dispositivos móveis, que desejam consul
 - **RF2 — Consultar clima atual:** o sistema deve exibir as condições meteorológicas atuais da cidade selecionada.
   - RF2.1 — Exibir temperatura atual e condição meteorológica em pt-BR. São campos essenciais; se qualquer um faltar ou for inválido, a seção é indisponível e apresenta erro recuperável.
   - RF2.2 — Exibir sensação térmica, umidade relativa e velocidade do vento. São complementares: se ausentes ou inválidos, manter o rótulo e exibir "—".
+    O hero também exibe precipitação em mm e pressão em hPa, quando fornecidas;
+    ausência dessas métricas mantém os rótulos e exibe "—".
   - RF2.3 — Exibir a cidade selecionada (nome, região/estado quando disponível e país) junto aos dados.
   - RF2.4 — Exibir o horário de referência informado pela fonte no fuso da cidade. Se ausente, exibir a hora de recebimento da resposta convertida para o fuso da cidade e identificada como horário da consulta.
   - RF2.5 — Disponibilizar atualização manual dos dados. Não atualizar automaticamente; atualizar ou repetir uma falha afeta apenas a seção solicitada.

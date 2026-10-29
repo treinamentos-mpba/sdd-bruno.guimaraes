@@ -4,6 +4,31 @@ Fonte de verdade: [especificação do Weather App](../specs/weather-app-spec.md)
 
 ## Architecture
 
+### Etapa intermediária: composição visual com mock
+
+`App.tsx` compõe os componentes existentes e mantém apenas o estado da prévia
+(`idle/loading/empty/error/success`) e a unidade de UI. A montagem inicia em
+`idle`; o mock só é apresentado por busca explícita de Salvador, seleção de
+sucesso ou retry simulado. Um seletor identificado como demonstração torna todos
+os estados inspecionáveis, sem timers nem acesso à API. `CurrentWeather` e
+`ForecastList` recebem o mesmo `WeatherData` original e a unidade, reutilizando
+`formatTemperature` na renderização, sem modificar os dados em Celsius.
+`main.tsx` monta a aplicação e importa os estilos globais Tailwind.
+Testes de integração cobrem estados e conversão; Playwright verifica ausência
+de rolagem horizontal nas larguras previstas. A orquestração real abaixo
+permanece uma etapa posterior.
+
+### Integração inicial com useWeather
+
+O App passa a consumir `status`, `data`, `error`, `search` e `retry` do hook
+existente `useWeather`, removendo o mock e os controles de demonstração.
+SearchBar chama `search` e fica desabilitada durante loading; ErrorState chama
+`retry` e mostra a mensagem recebida. Apenas sucesso com dados renderiza
+CurrentWeather e ForecastList. `unit` permanece em `useState` no App e é passada
+a ambos os componentes, sem alterar os dados originais nem consultar serviços.
+Testes do App simulam os serviços, mantendo o hook real; E2E intercepta a API.
+Este recorte não implementa seleção nem estados independentes das seções.
+
 Aplicação web React organizada em camadas simples, com dependências apontando da apresentação para a orquestração e desta para os serviços. `components` não acessam a Open-Meteo: `hooks` coordenam ações e estado, `services` fazem I/O, e `lib` concentra transformações puras reutilizáveis. A resposta externa é validada e normalizada antes de chegar à interface.
 
 ```text
@@ -28,6 +53,7 @@ components/ ── props ──► hooks/ (estado e orquestração)
 - `lib` contém funções sem efeitos colaterais para normalização/validação de payloads, conversão de temperatura, mapeamento de códigos meteorológicos e regras de data/fuso.
 - A busca e as consultas de clima atual e previsão são operações separadas. A seleção de cidade inicia as duas consultas meteorológicas sem que a falha de uma impeça o resultado da outra.
 - A UI recebe somente modelos de domínio e estados explícitos; nenhum componente interpreta respostas brutas da Open-Meteo.
+- `SearchBar` é o formulário de entrada: recebe `onSearch(city: string)` e `disabled`, emite o termo com `trim` por botão ou Enter e orienta entradas vazias sem emitir busca. A prop `disabled` bloqueia edição e submissão; resultados e estados de requisição ficam fora desse componente.
 - Requisições obsoletas não podem sobrescrever resultados recentes. A seleção de outra cidade limpa imediatamente os dados da cidade anterior.
 
 **Rastreabilidade:** RF1–RF6; RNF2–RNF4; AC1.6, AC2.2, AC7.4–AC7.6.
@@ -112,6 +138,8 @@ interface CurrentWeather {
   apparentTemperatureC: number | null;
   relativeHumidity: number | null;
   windSpeedKmh: number | null;
+  precipitationMm?: number | null;
+  pressureHpa?: number | null;
   weatherCode: number;
 }
 
@@ -128,14 +156,26 @@ interface Forecast {
   days: ForecastDay[]; // datas locais D a D+4, em ordem cronológica
   incomplete: boolean;
 }
+
+interface WeatherData {
+  city: City;
+  current: CurrentWeather;
+  forecast: Forecast;
+}
 ```
 
+- `WeatherData` agrega dados completos para apresentação e desenvolvimento isolado da UI; não substitui os estados independentes de cada seção. O mock exportado em `src/mocks/weather.ts` usa datas fixas, sem rede, e não deve ser carregado automaticamente pela aplicação.
 - As temperaturas de domínio permanecem em Celsius, com a precisão recebida da fonte. A unidade escolhida altera apenas a apresentação: conversão a partir do valor original e arredondamento no momento de exibir, nunca conversões sucessivas sobre valores já arredondados. Arredondar ao inteiro mais próximo, com empate afastado de zero.
 - Formatar datas como `dd/MM/yyyy` e dias da semana em pt-BR. Exibir temperatura com °C/°F, umidade com % e vento com km/h; usar vírgula como separador decimal quando houver casas decimais.
 - Temperatura e código da condição atuais são essenciais. Valores essenciais inválidos tornam indisponível a seção atual; campos complementares inválidos tornam-se `null`.
 - Para cada dia, temperatura mínima, máxima e condição são obrigatórias. Valor ausente/inválido é `null`, o dia fica `incomplete` e a previsão fica marcada como incompleta. Não estimar valores.
 - Valores devem respeitar schema e faixas: umidade entre 0 e 100%, vento não negativo e mínima diária menor ou igual à máxima. Códigos meteorológicos WMO conhecidos são traduzidos para pt-BR; código desconhecido resulta em “Condição indisponível”.
 - `weatherCode` do dia deve aceitar ausência na resposta já normalizada (`null`), mesmo que seja obrigatório para apresentar um dia completo.
+- O hero `CurrentWeather` recebe `city`, `current` e `unit`; usa `lib/temperature.ts`
+  para temperatura/sensação e `lib/weatherCodes.ts` para descrição/ícone WMO.
+  Precipitação (`precipitationMm`) e pressão (`pressureHpa`) são complementares
+  opcionais, preservando produtores existentes; sem dados, mostrar “—”, nunca
+  estimar. O componente apresenta dados recebidos, sem carregar ou buscar por conta própria.
 
 Contrato de erro compartilhado:
 
@@ -209,7 +249,30 @@ flowchart TD
 
 Todas as chamadas são HTTPS, sem credenciais no cliente. Usar `fetch` com cancelamento/timeout de 10 segundos por requisição.
 
+#### Incremento P7.3 — timeout compartilhado
+
+`fetchWithTimeout(url)` em `weatherService.ts` usa um `AbortController` por
+chamada e aborta `fetch` em 10.000 ms. Converte `AbortError` em
+`WeatherServiceError('A requisição demorou demais.', 'timeout')` e outras
+rejeições de rede em `WeatherServiceError('Falha de rede.', 'network')`,
+preservando a causa. O timer é sempre limpo no `finally`. Busca e forecast
+usam esse helper; classificação HTTP e JSON continua em `requestJson`.
+Este incremento limita a espera pela resposta do fetch; não inclui consumo do
+corpo, cancelamento externo ou retries. Esses itens da arquitetura final
+permanecem pendentes.
+
 ### Geocoding
+
+#### Incremento P7.1 — serviço isolado
+
+O primeiro incremento expõe `searchCities(name: string): Promise<City[]>` e
+`WeatherServiceError` em `src/services/weatherService.ts`, conforme o módulo 07.
+Entrada vazia após trim retorna `[]` sem rede; o termo recebe normalização NFC
+e `encodeURIComponent`. O serviço valida o payload e mapeia somente os campos
+de `City`, preservando ordem e limitando a dez resultados. Falhas HTTP, de rede
+e de resposta são erros tipados com mensagem em pt-BR, categoria e status HTTP
+quando disponível. Esse incremento não conecta o App nem implementa timeout,
+cancelamento ou transporte compartilhado, que permanecem nas tarefas seguintes.
 
 - **Endpoint:** `https://geocoding-api.open-meteo.com/v1/search`
 - **Exemplo de URL:** `https://geocoding-api.open-meteo.com/v1/search?name=Lisboa&count=10&language=pt&format=json`
@@ -235,6 +298,19 @@ Todas as chamadas são HTTPS, sem credenciais no cliente. Usar `fetch` com cance
 - Manter a ordem de relevância recebida e exibir estado/região quando disponível.
 
 ### Forecast
+
+#### Incremento P7.2 — consulta agregada
+
+`getWeather(city: City): Promise<WeatherData>` em `weatherService.ts` faz uma
+consulta com `current` e `daily`, reutilizando o transporte de P7.1. Preserva a
+cidade selecionada e as unidades de origem. Valida fuso, horário e campos
+essenciais atuais; complementos inválidos tornam-se `null`. Os arrays diários
+são associados por índice antes de ordenar por data e limitar a cinco dias
+consecutivos. Campos diários ausentes/ inválidos tornam o dia incompleto.
+Este contrato agregado exige cinco datas utilizáveis: menos datas ou ausência
+de `current`/`daily` lança `WeatherServiceError` de resposta incompleta, sem
+inventar dias. A apresentação parcial com menos datas e as consultas independentes
+da arquitetura final permanecem em T-19/T-21, assim como timeout/cancelamento.
 
 - **Endpoint:** `https://api.open-meteo.com/v1/forecast`
 - **Exemplo de URL:** `https://api.open-meteo.com/v1/forecast?latitude=38.71667&longitude=-9.13333&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&temperature_unit=celsius&wind_speed_unit=kmh&timezone=auto&forecast_days=5`

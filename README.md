@@ -76,9 +76,70 @@ pnpm test:coverage   # cobertura
 pnpm test:e2e        # testes E2E (Playwright)
 ```
 
+### Consulta de clima
+
+Execute `pnpm dev` para abrir [src/App.tsx](src/App.tsx).
+A tela inicia com orientação de busca, sem dados nem requisições automáticas.
+O hook [useWeather](src/hooks/useWeather.ts) consulta a Open-Meteo após buscar
+uma cidade e carrega o clima da primeira correspondência. A tela apresenta
+carregamento, vazio, erro com **Tentar novamente** ou clima atual e cinco dias.
+O retry repete a última operação; não há controles de simulação na tela.
+O controle °C/°F preserva a escolha entre estados e converte somente na exibição.
+
+### Dados de exemplo para a UI
+
+Os contratos estão em [src/types/weather.ts](src/types/weather.ts). Para desenvolver
+componentes sem a API, importe o objeto tipado:
+
+```ts
+import { mockWeatherData } from './mocks/weather';
+
+const { city, current, forecast } = mockWeatherData;
+```
+
+O caminho acima considera um arquivo diretamente em `src/`. O
+[mock](src/mocks/weather.ts) contém Salvador, clima atual e cinco dias completos
+(29/10/2026 a 02/11/2026), no fuso `America/Bahia`. As temperaturas mantêm casas
+decimais em Celsius; conversão e arredondamento ficam na apresentação. As datas são
+fixas e não acompanham o relógio. O mock não faz requisições nem é ativado
+automaticamente na aplicação.
+
 ---
 
 ## Arquitetura do app
+
+### Serviço de busca de cidades
+
+[searchCities](src/services/weatherService.ts) consulta o geocoding da Open-Meteo,
+retornando até dez objetos `City` na ordem da fonte. O nome recebe trim,
+normalização NFC e `encodeURIComponent`; entrada vazia retorna `[]` sem rede.
+Respostas válidas sem `results` também retornam `[]`. Erros HTTP, de rede e de
+payload lançam `WeatherServiceError`, com `kind` e `status` quando aplicável.
+O App está conectado ao serviço pelo hook `useWeather`.
+
+### Consulta agregada de clima
+
+`getWeather(city)` em [weatherService.ts](src/services/weatherService.ts) consulta
+`current` e `daily` pelas coordenadas da cidade, em Celsius e km/h, com fuso
+automático e cinco dias. Retorna `WeatherData`, preservando a cidade e a precisão
+dos valores. Arrays diários são alinhados por índice e ordenados por data.
+Ausência de `current`/`daily`, campos atuais essenciais inválidos ou menos de
+cinco datas consecutivas lança `WeatherServiceError`. Complementos inválidos
+viram `null`; campos diários obrigatórios inválidos marcam o dia e a previsão
+como incompletos. Probabilidade ausente não é convertida em zero.
+Esta consulta agregada é usada pelo App via `useWeather`, mas ainda não implementa
+estados independentes das seções nem cancelamento externo.
+
+### Timeout e falhas de rede
+
+As duas consultas usam `fetchWithTimeout` em
+[weatherService.ts](src/services/weatherService.ts). Cada chamada tem seu próprio
+`AbortController`, abortado após 10 segundos; o timer é limpo no `finally`,
+inclusive em sucesso ou falha. `AbortError` vira `WeatherServiceError` com
+`kind: 'timeout'` e “A requisição demorou demais.”; falhas de rede usam
+`kind: 'network'` e “Falha de rede.”. A causa original é preservada.
+O helper não repete requisições. O prazo cobre o `fetch`, não a leitura
+posterior do corpo da resposta.
 
 ```text
 src/
